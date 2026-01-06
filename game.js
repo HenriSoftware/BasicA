@@ -1,24 +1,21 @@
 (() => {
   "use strict";
 
-  // ==============
-  //  WORD LIST
-  //  - Alle Wörter: 5 Buchstaben, A-Z, ohne Umlaute (äöü->ae/oe/ue) für einfache Engine
-  //  - Du kannst die Liste beliebig erweitern/ersetzen
-  // ==============
-  const WORDS = [
-    "abend","apfel","arena","audio","banal","brett","clown","dinge","drama","eigen",
-    "fabel","farbe","fisch","flink","frage","geist","glanz","gruen","heute","ideal",
-    "joker","juwel","kabel","kanal","kiste","klang","knapp","kugel","laden","laser",
-    "licht","linie","lobby","lunge","markt","mauer","metal","modus","nacht","nebel",
-    "oasen","piano","pixel","punkt","quark","radio","route","sache","saldo","sauber",
-    "schub","seide","serie","sonne","stahl","start","taste","tempo","tiger","total",
-    "union","vital","wache","walze","wiese","wolke","zebra","zonen"
-  ].map(w => w.toUpperCase());
+  // ============================================================
+  //  NO DICTIONARY / NO WORD LIST
+  //  - Any 5-letter guess is allowed.
+  //  - The "answer" is a 5-letter CODE generated from A–Z.
+  //
+  //  Daily mode:
+  //    The code is generated deterministically from today's date (YYYY-MM-DD).
+  //    That means: same device + same day => same daily code.
+  //
+  //  Random mode:
+  //    A fresh random code is generated.
+  // ============================================================
 
-  // ==============
-  //  CONFIG
-  // ==============
+  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
   const COLS = 5;
   const ROWS = 6;
 
@@ -26,15 +23,13 @@
   const KEY_RANK = { "": 0, absent: 1, present: 2, correct: 3 };
 
   // Storage keys
-  const LS_PREFIX = "neonword_v1";
+  const LS_PREFIX = "neonword_v2";
   const LS_SETTINGS = `${LS_PREFIX}_settings`;
   const LS_STATS = `${LS_PREFIX}_stats`;
-  const LS_DAILY_STATE = `${LS_PREFIX}_daily_state`; // per date
-  const LS_RANDOM_STATE = `${LS_PREFIX}_random_state`; // current random session
+  const LS_DAILY_STATE = `${LS_PREFIX}_daily_state`;   // saved per date
+  const LS_RANDOM_STATE = `${LS_PREFIX}_random_state`; // saved current random session
 
-  // ==============
-  //  DOM
-  // ==============
+  // DOM
   const $ = (id) => document.getElementById(id);
 
   const gridEl = $("grid");
@@ -64,14 +59,11 @@
   const stBest = $("stBest");
   const distBars = $("distBars");
 
-  // ==============
-  //  SETTINGS + STATS
-  // ==============
+  // Settings + Stats
   const defaultSettings = {
     contrast: false,
     reduceMotion: false,
-    hardMode: false,
-    mode: "daily" // "daily" or "random"
+    hardMode: false
   };
 
   function loadSettings() {
@@ -108,36 +100,23 @@
     localStorage.setItem(LS_STATS, JSON.stringify(s));
   }
 
-  // ==============
-  //  GAME STATE
-  // ==============
   let settings = loadSettings();
   let stats = loadStats();
-
-  // state object is swapped depending on daily/random
   let state = null;
 
+  // ------------------------------------------------------------
+  //  Deterministic daily RNG helpers
+  // ------------------------------------------------------------
   function todayKey() {
-    // YYYY-MM-DD
     const d = new Date();
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  function mulberry32(seed) {
-    // deterministic RNG
-    return function() {
-      let t = (seed += 0x6D2B79F5);
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
+    return `${y}-${m}-${day}`; // YYYY-MM-DD
   }
 
   function hashStringToSeed(str) {
-    // stable seed from string
+    // Simple stable hash -> 32-bit unsigned seed
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) {
       h ^= str.charCodeAt(i);
@@ -146,58 +125,75 @@
     return h >>> 0;
   }
 
+  function mulberry32(seed) {
+    // Deterministic PRNG from a seed
+    return function () {
+      let t = (seed += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function generateCode(rng) {
+    // returns 5 letters, allows duplicates (like Wordle answers can repeat letters)
+    let out = "";
+    for (let i = 0; i < COLS; i++) {
+      const idx = Math.floor(rng() * ALPHABET.length);
+      out += ALPHABET[idx];
+    }
+    return out;
+  }
+
   function pickDailyAnswer() {
     const key = todayKey();
     const rng = mulberry32(hashStringToSeed(key));
-    const idx = Math.floor(rng() * WORDS.length);
-    return WORDS[idx];
+    return generateCode(rng);
   }
 
   function pickRandomAnswer() {
-    const idx = Math.floor(Math.random() * WORDS.length);
-    return WORDS[idx];
+    // Non-deterministic random
+    const rng = Math.random;
+    return generateCode(rng);
   }
 
+  // ------------------------------------------------------------
+  //  State + Persistence
+  // ------------------------------------------------------------
   function freshState(answer, modeKey) {
     return {
       modeKey,            // "daily:YYYY-MM-DD" or "random:timestamp"
-      answer,             // string, uppercase
+      answer,             // string, uppercase, length 5
       grid: Array.from({ length: ROWS }, () => Array(COLS).fill("")),
       evaluations: Array.from({ length: ROWS }, () => Array(COLS).fill("")),
       row: 0,
       col: 0,
       status: "playing",  // playing | won | lost
       keyboard: {},       // letter => absent/present/correct
+
+      // For hard mode validation:
       usedHints: {
-        // for hard mode: must reuse known hints
-        // correctPos: Map(index->letter), presentLetters: Set(letter)
-        correctPos: {},
-        presentLetters: []
+        correctPos: {},       // { index: letter }
+        presentLetters: []    // ["A","B",...]
       }
     };
   }
 
   function loadGameState(mode) {
-    if (mode === "daily") {
-      const key = `daily:${todayKey()}`;
-      try {
+    try {
+      if (mode === "daily") {
+        const expectedKey = `daily:${todayKey()}`;
         const raw = localStorage.getItem(LS_DAILY_STATE);
         if (!raw) return null;
         const obj = JSON.parse(raw);
-        if (obj?.modeKey !== key) return null;
+        if (obj?.modeKey !== expectedKey) return null;
         return obj;
-      } catch {
-        return null;
       }
-    } else {
-      try {
-        const raw = localStorage.getItem(LS_RANDOM_STATE);
-        if (!raw) return null;
-        const obj = JSON.parse(raw);
-        return obj;
-      } catch {
-        return null;
-      }
+
+      const raw = localStorage.getItem(LS_RANDOM_STATE);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
     }
   }
 
@@ -210,9 +206,9 @@
     }
   }
 
-  // ==============
-  //  UI BUILD
-  // ==============
+  // ------------------------------------------------------------
+  //  UI Build
+  // ------------------------------------------------------------
   function buildGrid() {
     gridEl.innerHTML = "";
     for (let r = 0; r < ROWS; r++) {
@@ -257,9 +253,9 @@
     }
   }
 
-  // ==============
-  //  RENDER
-  // ==============
+  // ------------------------------------------------------------
+  //  Render helpers
+  // ------------------------------------------------------------
   function tileEl(r, c) {
     return gridEl.querySelector(`.tile[data-row="${r}"][data-col="${c}"]`);
   }
@@ -308,20 +304,19 @@
       if (v) b.classList.add(v);
     });
 
-    // Mode badge
+    // Badge
     if (state.modeKey.startsWith("daily:")) {
       dayBadge.textContent = "Daily";
-      dayBadge.title = "Tägliches Wort";
+      dayBadge.title = "Daily code (local)";
     } else {
       dayBadge.textContent = "Random";
-      dayBadge.title = "Zufälliges Wort";
+      dayBadge.title = "Random code";
     }
   }
 
   function animateRowShake(r) {
     const rowEl = gridEl.querySelector(`.row[data-row="${r}"]`);
-    if (!rowEl) return;
-    if (settings.reduceMotion) return;
+    if (!rowEl || settings.reduceMotion) return;
     rowEl.classList.remove("shake");
     void rowEl.offsetWidth;
     rowEl.classList.add("shake");
@@ -329,11 +324,14 @@
 
   function animateTilePop(r, c) {
     const t = tileEl(r, c);
-    if (!t) return;
-    if (settings.reduceMotion) return;
+    if (!t || settings.reduceMotion) return;
     t.classList.remove("pop");
     void t.offsetWidth;
     t.classList.add("pop");
+  }
+
+  function wait(ms) {
+    return new Promise(res => setTimeout(res, ms));
   }
 
   async function revealRow(r, evals) {
@@ -356,15 +354,10 @@
     }
   }
 
-  function wait(ms) {
-    return new Promise(res => setTimeout(res, ms));
-  }
-
-  // ==============
-  //  WORDLE EVALUATION (with duplicates handled)
-  // ==============
+  // ------------------------------------------------------------
+  //  Wordle evaluation (handles duplicates)
+  // ------------------------------------------------------------
   function evaluateGuess(guess, answer) {
-    // guess/answer uppercase
     const g = guess.split("");
     const a = answer.split("");
 
@@ -385,10 +378,7 @@
       const ch = g[i];
       let found = -1;
       for (let j = 0; j < COLS; j++) {
-        if (!used[j] && a[j] === ch) {
-          found = j;
-          break;
-        }
+        if (!used[j] && a[j] === ch) { found = j; break; }
       }
       if (found !== -1) {
         res[i] = "present";
@@ -404,21 +394,17 @@
       const ch = guess[i];
       const ev = evals[i];
       const prev = state.keyboard[ch] || "";
-      if (KEY_RANK[ev] > KEY_RANK[prev]) {
-        state.keyboard[ch] = ev;
-      }
+      if (KEY_RANK[ev] > KEY_RANK[prev]) state.keyboard[ch] = ev;
     }
   }
 
-  // ==============
-  //  HARD MODE (simple but correct)
-  // ==============
+  // ------------------------------------------------------------
+  //  Hard mode: must reuse revealed hints
+  // ------------------------------------------------------------
   function deriveHintsFromRow(guess, evals) {
-    // correct positions
     for (let i = 0; i < COLS; i++) {
       if (evals[i] === "correct") state.usedHints.correctPos[i] = guess[i];
     }
-    // present letters
     const presents = new Set(state.usedHints.presentLetters);
     for (let i = 0; i < COLS; i++) {
       if (evals[i] === "present" || evals[i] === "correct") presents.add(guess[i]);
@@ -431,25 +417,18 @@
     for (const idxStr of Object.keys(cp)) {
       const idx = Number(idxStr);
       if (nextGuess[idx] !== cp[idx]) {
-        return `Hard Mode: Position ${idx + 1} muss "${cp[idx]}" sein.`;
+        return `Hard Mode: position ${idx + 1} must be "${cp[idx]}".`;
       }
     }
-    // Must include all known present letters at least once
     for (const ch of state.usedHints.presentLetters) {
-      if (!nextGuess.includes(ch)) {
-        return `Hard Mode: Nutze den Hinweis "${ch}".`;
-      }
+      if (!nextGuess.includes(ch)) return `Hard Mode: use "${ch}".`;
     }
     return "";
   }
 
-  // ==============
-  //  INPUT / GAMEPLAY
-  // ==============
-  function currentGuess() {
-    return state.grid[state.row].join("");
-  }
-
+  // ------------------------------------------------------------
+  //  Input / Gameplay
+  // ------------------------------------------------------------
   function setLetter(ch) {
     if (state.status !== "playing") return;
     if (state.col >= COLS) return;
@@ -464,78 +443,64 @@
   function backspace() {
     if (state.status !== "playing") return;
     if (state.col <= 0) return;
+
     state.col--;
     state.grid[state.row][state.col] = "";
     saveGameState();
     renderAll();
   }
 
-  function isValidWord(w) {
-    // Engine: only accept from WORDS list to keep it Wordle-like
-    return WORDS.includes(w);
-  }
-
   async function submit() {
-  if (state.status !== "playing") return;
+    if (state.status !== "playing") return;
 
-  const rowArr = state.grid[state.row];
-
-  // robust: jede Zelle muss genau 1 Zeichen haben
-  const filled = rowArr.every(ch => typeof ch === "string" && ch.length === 1);
-  if (!filled) {
-    showToast("5 Buchstaben eingeben");
-    animateRowShake(state.row);
-    return;
-  }
-
-  const guess = rowArr.join("");
-
-  if (!isValidWord(guess)) {
-    showToast("Wort nicht in Liste");
-    animateRowShake(state.row);
-    return;
-  }
-
-  if (settings.hardMode) {
-    const msg = validateHardMode(guess);
-    if (msg) {
-      showToast(msg, 1400);
+    const rowArr = state.grid[state.row];
+    const filled = rowArr.every(ch => typeof ch === "string" && ch.length === 1);
+    if (!filled) {
+      showToast("Enter 5 letters");
       animateRowShake(state.row);
       return;
     }
-  }
 
-  const evals = evaluateGuess(guess, state.answer);
-  await revealRow(state.row, evals);
+    const guess = rowArr.join("");
+    if (settings.hardMode) {
+      const msg = validateHardMode(guess);
+      if (msg) {
+        showToast(msg, 1400);
+        animateRowShake(state.row);
+        return;
+      }
+    }
 
-  updateKeyboardFromEval(guess, evals);
-  deriveHintsFromRow(guess, evals);
+    const evals = evaluateGuess(guess, state.answer);
+    await revealRow(state.row, evals);
 
-  const won = evals.every(e => e === "correct");
-  if (won) {
-    state.status = "won";
+    updateKeyboardFromEval(guess, evals);
+    deriveHintsFromRow(guess, evals);
+
+    const won = evals.every(e => e === "correct");
+    if (won) {
+      state.status = "won";
+      saveGameState();
+      renderAll();
+      onGameEnd(true, state.row + 1);
+      showToast("You win!");
+      return;
+    }
+
+    if (state.row === ROWS - 1) {
+      state.status = "lost";
+      saveGameState();
+      renderAll();
+      onGameEnd(false, 0);
+      showToast(`You lose — ${state.answer}`);
+      return;
+    }
+
+    state.row++;
+    state.col = 0;
     saveGameState();
     renderAll();
-    onGameEnd(true, state.row + 1);
-    showToast("Gewonnen!");
-    return;
   }
-
-  if (state.row === ROWS - 1) {
-    state.status = "lost";
-    saveGameState();
-    renderAll();
-    onGameEnd(false, 0);
-    showToast(`Verloren — ${state.answer}`);
-    return;
-  }
-
-  state.row++;
-  state.col = 0;
-  saveGameState();
-  renderAll();
-}
-
 
   function handleKey(k) {
     if (!state) return;
@@ -543,8 +508,7 @@
     if (k === "ENTER") return submit();
     if (k === "⌫" || k === "BACKSPACE") return backspace();
 
-    // Only A-Z
-    const ch = k.length === 1 ? k.toUpperCase() : "";
+    const ch = (k.length === 1 ? k.toUpperCase() : "");
     if (!/^[A-Z]$/.test(ch)) return;
     setLetter(ch);
   }
@@ -556,22 +520,17 @@
         return;
       }
 
-      const key = e.key;
-      if (key === "Enter") { e.preventDefault(); handleKey("ENTER"); return; }
-      if (key === "Backspace") { e.preventDefault(); handleKey("BACKSPACE"); return; }
+      if (e.key === "Enter") { e.preventDefault(); handleKey("ENTER"); return; }
+      if (e.key === "Backspace") { e.preventDefault(); handleKey("BACKSPACE"); return; }
 
-      const ch = key.toUpperCase();
-      if (/^[A-ZÄÖÜ]$/.test(ch)) {
-        // simple umlaut mapping to keep engine consistent
-        const mapped = ch === "Ä" ? "A" : ch === "Ö" ? "O" : ch === "Ü" ? "U" : ch;
-        handleKey(mapped);
-      }
+      const ch = e.key.toUpperCase();
+      if (/^[A-Z]$/.test(ch)) handleKey(ch);
     });
   }
 
-  // ==============
-  //  MODALS
-  // ==============
+  // ------------------------------------------------------------
+  //  Modals
+  // ------------------------------------------------------------
   function closeAllModals() {
     [helpModal, statsModal, settingsModal].forEach(m => { if (m.open) m.close(); });
   }
@@ -585,21 +544,21 @@
       b.addEventListener("click", () => closeAllModals());
     });
 
-    // click outside to close
     [helpModal, statsModal, settingsModal].forEach(m => {
       m.addEventListener("click", (e) => {
         const r = m.getBoundingClientRect();
-        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        const inside =
+          e.clientX >= r.left && e.clientX <= r.right &&
+          e.clientY >= r.top && e.clientY <= r.bottom;
         if (!inside) m.close();
       });
     });
   }
 
-  // ==============
-  //  STATS + SHARE
-  // ==============
+  // ------------------------------------------------------------
+  //  Stats + Share
+  // ------------------------------------------------------------
   function onGameEnd(won, attempt) {
-    // Daily streak logic: increase only if daily and won today, reset if daily lost
     stats.played++;
 
     if (won) {
@@ -607,12 +566,10 @@
       stats.streak++;
       stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
       if (attempt >= 1 && attempt <= 6) stats.dist[attempt - 1]++;
-
       saveStats(stats);
       return;
     }
 
-    // loss
     stats.streak = 0;
     saveStats(stats);
   }
@@ -637,8 +594,7 @@
       const bar = document.createElement("div");
       bar.className = "bar";
       const fill = document.createElement("span");
-      const pct = Math.round((stats.dist[i] / max) * 100);
-      fill.style.width = `${pct}%`;
+      fill.style.width = `${Math.round((stats.dist[i] / max) * 100)}%`;
       bar.appendChild(fill);
 
       const val = document.createElement("div");
@@ -648,7 +604,6 @@
       row.appendChild(label);
       row.appendChild(bar);
       row.appendChild(val);
-
       distBars.appendChild(row);
     }
   }
@@ -675,22 +630,22 @@
 
     try {
       await navigator.clipboard.writeText(text);
-      showToast("In Zwischenablage kopiert");
+      showToast("Copied to clipboard");
     } catch {
-      showToast("Kopieren nicht möglich");
+      showToast("Copy failed");
     }
   }
 
-  // ==============
-  //  NEW GAME / MODE
-  // ==============
+  // ------------------------------------------------------------
+  //  New game / mode
+  // ------------------------------------------------------------
   function newDailyGameIfNeeded() {
-    const key = `daily:${todayKey()}`;
     const loaded = loadGameState("daily");
     if (loaded) {
       state = loaded;
       return;
     }
+    const key = `daily:${todayKey()}`;
     const answer = pickDailyAnswer();
     state = freshState(answer, key);
     saveGameState();
@@ -703,15 +658,9 @@
     saveGameState();
   }
 
-  function startGame() {
-    // daily by default
-    newDailyGameIfNeeded();
-    renderAll();
-  }
-
-  // ==============
-  //  SETTINGS BINDINGS
-  // ==============
+  // ------------------------------------------------------------
+  //  Settings bindings
+  // ------------------------------------------------------------
   function bindSettings() {
     tgContrast.addEventListener("change", () => {
       settings.contrast = tgContrast.checked;
@@ -722,26 +671,26 @@
     tgReduceMotion.addEventListener("change", () => {
       settings.reduceMotion = tgReduceMotion.checked;
       saveSettings(settings);
-      showToast(settings.reduceMotion ? "Reduce Motion: an" : "Reduce Motion: aus");
+      showToast(settings.reduceMotion ? "Reduce motion: on" : "Reduce motion: off");
     });
 
     tgHardMode.addEventListener("change", () => {
       settings.hardMode = tgHardMode.checked;
       saveSettings(settings);
-      showToast(settings.hardMode ? "Hard Mode: an" : "Hard Mode: aus");
+      showToast(settings.hardMode ? "Hard mode: on" : "Hard mode: off");
     });
 
     btnResetStats.addEventListener("click", () => {
       stats = { played: 0, won: 0, streak: 0, bestStreak: 0, dist: [0,0,0,0,0,0] };
       saveStats(stats);
       renderStats();
-      showToast("Stats gelöscht");
+      showToast("Stats reset");
     });
   }
 
-  // ==============
-  //  INIT
-  // ==============
+  // ------------------------------------------------------------
+  //  Init
+  // ------------------------------------------------------------
   function init() {
     syncSettingsUI();
     buildGrid();
@@ -751,36 +700,30 @@
     bindSettings();
 
     btnNew.addEventListener("click", () => {
-      // new random game (doesn't affect daily)
       newRandomGame();
       renderAll();
-      showToast("Random Spiel gestartet");
+      showToast("Random game started");
     });
 
     btnShare.addEventListener("click", () => {
       if (state.status === "playing") {
-        showToast("Erst Spiel beenden");
+        showToast("Finish the game first");
         animateRowShake(state.row);
         return;
       }
       shareResult();
     });
 
-    // Load stats
     renderStats();
 
-    // Start daily (load saved daily if exists)
-    startGame();
+    // default: daily
+    newDailyGameIfNeeded();
+    renderAll();
 
-    // If daily is already finished, reflect that and let user share
     if (state.status !== "playing") {
-      const msg = state.status === "won" ? "Heute gelöst ✅" : "Heute verloren";
-      showToast(msg, 1200);
+      showToast(state.status === "won" ? "Solved today ✅" : "Lost today", 1200);
     }
   }
 
   init();
 })();
-
-
-
