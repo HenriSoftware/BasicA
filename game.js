@@ -136,14 +136,22 @@
   }
 
   function generateCode(rng) {
-    // returns 5 letters, allows duplicates (like Wordle answers can repeat letters)
-    let out = "";
-    for (let i = 0; i < COLS; i++) {
-      const idx = Math.floor(rng() * ALPHABET.length);
-      out += ALPHABET[idx];
-    }
-    return out;
-  }
+  // "Pronounceable" 5-letter code using consonant/vowel pattern.
+  // Example outputs: LOMEN, RAVIX, TUNER, BOKAL (not necessarily real words).
+  const V = "AEIOU";
+  const C = "BCDFGHJKLMNPQRSTVWXYZ";
+
+  // Patterns for 5 letters (C=consonant, V=vowel)
+  const patterns = ["CVCVC", "CVCCV", "CCVCV", "CVCVV", "CVVCC"];
+
+  const pick = (s) => s[Math.floor(rng() * s.length)];
+  const pat = patterns[Math.floor(rng() * patterns.length)];
+
+  let out = "";
+  for (const p of pat) out += (p === "V") ? pick(V) : pick(C);
+  return out;
+}
+
 
   function pickDailyAnswer() {
     const key = todayKey();
