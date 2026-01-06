@@ -2,116 +2,196 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dark Site + Mini-Game</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NeonWord — Wordle-Style</title>
+  <meta name="description" content="Ein cleanes Wordle-Style Spiel (HTML/CSS/JS), perfekt für GitHub Pages." />
   <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
-  <header class="container header">
-    <div class="brand">
-      <div class="logo" aria-hidden="true"></div>
+  <div class="bg" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand" aria-label="NeonWord">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="brandText">NeonWord</span>
+      <span class="badge" id="dayBadge" title="Tägliches Wort (lokal generiert)">Daily</span>
+    </div>
+
+    <div class="topActions">
+      <button class="iconBtn" id="btnHelp" aria-label="Hilfe öffnen" title="Hilfe">?</button>
+      <button class="iconBtn" id="btnStats" aria-label="Statistiken öffnen" title="Stats">★</button>
+      <button class="iconBtn" id="btnSettings" aria-label="Einstellungen öffnen" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card gameCard" aria-label="Spielbereich">
+      <div class="headline">
+        <h1>Errate das Wort</h1>
+        <p>5 Buchstaben • 6 Versuche • Tastatur oder Klick</p>
+      </div>
+
+      <div class="statusRow" aria-live="polite">
+        <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+      </div>
+
+      <div class="grid" id="grid" aria-label="Rate-Gitter" role="application"></div>
+
+      <div class="keyboard" id="keyboard" aria-label="Bildschirmtastatur"></div>
+
+      <div class="bottomRow">
+        <button class="btn subtle" id="btnNew" title="Neues Spiel (zufälliges Wort)">Neues Spiel</button>
+        <button class="btn" id="btnShare" title="Ergebnis als Text kopieren">Teilen</button>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span id="footText">Speichert Verlauf lokal (localStorage). Kein Backend.</span>
+    </footer>
+  </main>
+
+  <!-- MODAL: Hilfe -->
+  <dialog class="modal" id="helpModal">
+    <div class="modalHead">
       <div>
-        <div class="title">Meine Dark Website</div>
-        <div class="subtitle">Simple. Clean. Mit Mini-Game.</div>
+        <h2>So funktioniert’s</h2>
+        <p>Tippe ein 5-Buchstaben Wort und drücke Enter.</p>
+      </div>
+      <button class="iconBtn" data-close aria-label="Schließen">✕</button>
+    </div>
+
+    <div class="modalBody">
+      <div class="legend">
+        <div class="ex">
+          <div class="tile demo correct">A</div>
+          <div>
+            <div class="label">Grün</div>
+            <div class="muted">Buchstabe ist richtig & an richtiger Position.</div>
+          </div>
+        </div>
+        <div class="ex">
+          <div class="tile demo present">A</div>
+          <div>
+            <div class="label">Gelb</div>
+            <div class="muted">Buchstabe ist im Wort, aber woanders.</div>
+          </div>
+        </div>
+        <div class="ex">
+          <div class="tile demo absent">A</div>
+          <div>
+            <div class="label">Grau</div>
+            <div class="muted">Buchstabe kommt nicht vor.</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="sep" />
+
+      <ul class="bullets">
+        <li><strong>Enter</strong> = prüfen, <strong>Backspace</strong> = löschen</li>
+        <li>Mobile: nutze die Bildschirmtastatur</li>
+        <li>Daily: Das Wort wechselt pro Tag (lokal, anhand des Datums)</li>
+      </ul>
+    </div>
+
+    <div class="modalFoot">
+      <button class="btn" data-close>Alles klar</button>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Stats -->
+  <dialog class="modal" id="statsModal">
+    <div class="modalHead">
+      <div>
+        <h2>Statistiken</h2>
+        <p>Gespeichert auf deinem Gerät.</p>
+      </div>
+      <button class="iconBtn" data-close aria-label="Schließen">✕</button>
+    </div>
+
+    <div class="modalBody">
+      <div class="statsGrid">
+        <div class="statBox">
+          <div class="statLabel">Spiele</div>
+          <div class="statValue" id="stPlayed">0</div>
+        </div>
+        <div class="statBox">
+          <div class="statLabel">Gewonnen</div>
+          <div class="statValue" id="stWon">0</div>
+        </div>
+        <div class="statBox">
+          <div class="statLabel">Streak</div>
+          <div class="statValue" id="stStreak">0</div>
+        </div>
+        <div class="statBox">
+          <div class="statLabel">Best Streak</div>
+          <div class="statValue" id="stBest">0</div>
+        </div>
+      </div>
+
+      <div class="dist">
+        <div class="distHead">
+          <span>Verteilung (Versuche)</span>
+          <button class="btn tiny danger" id="btnResetStats" title="Statistiken löschen">Reset</button>
+        </div>
+        <div class="bars" id="distBars"></div>
       </div>
     </div>
 
-    <nav class="nav">
-      <a href="#home">Home</a>
-      <a href="#game">Game</a>
-      <a href="#about">About</a>
-    </nav>
-  </header>
+    <div class="modalFoot">
+      <button class="btn" data-close>Schließen</button>
+    </div>
+  </dialog>
 
-  <main class="container">
-    <section id="home" class="card hero">
+  <!-- MODAL: Settings -->
+  <dialog class="modal" id="settingsModal">
+    <div class="modalHead">
       <div>
-        <h1>Willkommen</h1>
-        <p>
-          Diese Website ist eine minimalistische Dark-Theme Seite mit einem kleinen
-          Canvas-Minigame (Tastatur oder Touch).
-        </p>
-        <div class="row">
-          <button id="btnScrollGame" class="btn primary">Zum Game</button>
-          <button id="btnToggleReduceMotion" class="btn">Reduce Motion</button>
-        </div>
+        <h2>Einstellungen</h2>
+        <p>Alles bleibt lokal.</p>
+      </div>
+      <button class="iconBtn" data-close aria-label="Schließen">✕</button>
+    </div>
+
+    <div class="modalBody">
+      <div class="settings">
+        <label class="toggleRow">
+          <span>
+            <strong>High Contrast</strong>
+            <span class="muted">stärkere Farben</span>
+          </span>
+          <input type="checkbox" id="tgContrast" />
+        </label>
+
+        <label class="toggleRow">
+          <span>
+            <strong>Reduce Motion</strong>
+            <span class="muted">weniger Animation</span>
+          </span>
+          <input type="checkbox" id="tgReduceMotion" />
+        </label>
+
+        <label class="toggleRow">
+          <span>
+            <strong>Hard Mode</strong>
+            <span class="muted">Hinweise müssen genutzt werden</span>
+          </span>
+          <input type="checkbox" id="tgHardMode" />
+        </label>
       </div>
 
-      <div class="stats">
-        <div class="pill">
-          <div class="pillLabel">Status</div>
-          <div class="pillValue" id="statusText">Ready</div>
-        </div>
-        <div class="pill">
-          <div class="pillLabel">Highscore</div>
-          <div class="pillValue" id="highscoreText">0</div>
-        </div>
-        <div class="pill">
-          <div class="pillLabel">Controls</div>
-          <div class="pillValue">← → / A D / Touch</div>
-        </div>
+      <hr class="sep" />
+
+      <div class="small muted">
+        Wortliste ist im <code>game.js</code>. Du kannst sie jederzeit ersetzen/erweitern.
       </div>
-    </section>
+    </div>
 
-    <section id="game" class="card">
-      <div class="sectionHead">
-        <h2>Mini-Game: Neon Dodger</h2>
-        <p>Weiche fallenden Blöcken aus. Je länger du überlebst, desto höher der Score.</p>
-      </div>
-
-      <div class="gameWrap">
-        <canvas id="gameCanvas" width="720" height="420" aria-label="Neon Dodger Spiel"></canvas>
-
-        <div class="hud">
-          <div class="hudBox">
-            <div class="hudLabel">Score</div>
-            <div class="hudValue" id="scoreText">0</div>
-          </div>
-          <div class="hudBox">
-            <div class="hudLabel">Highscore</div>
-            <div class="hudValue" id="hsText">0</div>
-          </div>
-          <div class="hudBox">
-            <div class="hudLabel">Speed</div>
-            <div class="hudValue" id="speedText">1.0×</div>
-          </div>
-        </div>
-
-        <div class="row">
-          <button id="btnStart" class="btn primary">Start</button>
-          <button id="btnPause" class="btn">Pause</button>
-          <button id="btnReset" class="btn danger">Reset</button>
-        </div>
-
-        <div class="help">
-          <strong>Desktop:</strong> Pfeiltasten (← →) oder A/D &nbsp;|&nbsp;
-          <strong>Mobile:</strong> Links/Rechts tippen oder ziehen
-        </div>
-      </div>
-    </section>
-
-    <section id="about" class="card">
-      <h2>About</h2>
-      <p>
-        Das ist ein superleichtes Setup: reine HTML/CSS/JS Dateien, ideal für GitHub Pages.
-        Du kannst später weitere Seiten, ein Blog oder mehr Games hinzufügen.
-      </p>
-      <ul class="list">
-        <li>Keine Frameworks</li>
-        <li>Dark Theme + saubere UI</li>
-        <li>Highscore wird lokal gespeichert</li>
-      </ul>
-    </section>
-  </main>
-
-  <footer class="container footer">
-    <span>© <span id="year"></span> • Built with GitHub Pages</span>
-    <span class="dot">•</span>
-    <a class="footerLink" href="#home">Back to top</a>
-  </footer>
+    <div class="modalFoot">
+      <button class="btn" data-close>Fertig</button>
+    </div>
+  </dialog>
 
   <script src="game.js"></script>
 </body>
 </html>
-

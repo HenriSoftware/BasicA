@@ -1,365 +1,778 @@
 (() => {
+  "use strict";
+
+  // ==============
+  //  WORD LIST
+  //  - Alle Wörter: 5 Buchstaben, A-Z, ohne Umlaute (äöü->ae/oe/ue) für einfache Engine
+  //  - Du kannst die Liste beliebig erweitern/ersetzen
+  // ==============
+  const WORDS = [
+    "abend","apfel","arena","audio","banal","brett","clown","dinge","drama","eigen",
+    "fabel","farbe","fisch","flink","frage","geist","glanz","gruen","heute","ideal",
+    "joker","juwel","kabel","kanal","kiste","klang","knapp","kugel","laden","laser",
+    "licht","linie","lobby","lunge","markt","mauer","metal","modus","nacht","nebel",
+    "oasen","piano","pixel","punkt","quark","radio","route","sache","saldo","sauber",
+    "schub","seide","serie","sonne","stahl","start","taste","tempo","tiger","total",
+    "union","vital","wache","walze","wiese","wolke","zebra","zonen"
+  ].map(w => w.toUpperCase());
+
+  // ==============
+  //  CONFIG
+  // ==============
+  const COLS = 5;
+  const ROWS = 6;
+
+  // Key priorities for keyboard coloring
+  const KEY_RANK = { "": 0, absent: 1, present: 2, correct: 3 };
+
+  // Storage keys
+  const LS_PREFIX = "neonword_v1";
+  const LS_SETTINGS = `${LS_PREFIX}_settings`;
+  const LS_STATS = `${LS_PREFIX}_stats`;
+  const LS_DAILY_STATE = `${LS_PREFIX}_daily_state`; // per date
+  const LS_RANDOM_STATE = `${LS_PREFIX}_random_state`; // current random session
+
+  // ==============
+  //  DOM
+  // ==============
   const $ = (id) => document.getElementById(id);
 
-  const canvas = $("gameCanvas");
-  const ctx = canvas.getContext("2d");
+  const gridEl = $("grid");
+  const keyboardEl = $("keyboard");
+  const toastEl = $("toast");
 
-  const scoreText = $("scoreText");
-  const hsText = $("hsText");
-  const highscoreText = $("highscoreText");
-  const speedText = $("speedText");
-  const statusText = $("statusText");
+  const dayBadge = $("dayBadge");
+  const btnHelp = $("btnHelp");
+  const btnStats = $("btnStats");
+  const btnSettings = $("btnSettings");
 
-  const btnStart = $("btnStart");
-  const btnPause = $("btnPause");
-  const btnReset = $("btnReset");
-  const btnScrollGame = $("btnScrollGame");
-  const btnToggleReduceMotion = $("btnToggleReduceMotion");
+  const helpModal = $("helpModal");
+  const statsModal = $("statsModal");
+  const settingsModal = $("settingsModal");
 
-  $("year").textContent = new Date().getFullYear();
+  const tgContrast = $("tgContrast");
+  const tgReduceMotion = $("tgReduceMotion");
+  const tgHardMode = $("tgHardMode");
 
-  // Preferences
-  const PREF_KEY = "neon_dodger_pref_reduce_motion";
-  let reduceMotion = localStorage.getItem(PREF_KEY) === "1";
+  const btnNew = $("btnNew");
+  const btnShare = $("btnShare");
+  const btnResetStats = $("btnResetStats");
 
-  function setReduceMotion(v){
-    reduceMotion = v;
-    localStorage.setItem(PREF_KEY, v ? "1" : "0");
-    statusText.textContent = reduceMotion ? "Ready (reduce motion)" : "Ready";
-  }
+  const stPlayed = $("stPlayed");
+  const stWon = $("stWon");
+  const stStreak = $("stStreak");
+  const stBest = $("stBest");
+  const distBars = $("distBars");
 
-  btnToggleReduceMotion.addEventListener("click", () => setReduceMotion(!reduceMotion));
-  setReduceMotion(reduceMotion);
-
-  btnScrollGame.addEventListener("click", () => {
-    $("game").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
-  });
-
-  // Highscore
-  const HS_KEY = "neon_dodger_highscore";
-  let highscore = Number(localStorage.getItem(HS_KEY) || "0");
-  hsText.textContent = String(highscore);
-  highscoreText.textContent = String(highscore);
-
-  // Game state
-  const state = {
-    running: false,
-    paused: false,
-    over: false,
-    t: 0,
-    score: 0,
-    speed: 1.0,
-    lastTs: 0,
+  // ==============
+  //  SETTINGS + STATS
+  // ==============
+  const defaultSettings = {
+    contrast: false,
+    reduceMotion: false,
+    hardMode: false,
+    mode: "daily" // "daily" or "random"
   };
 
-  const player = {
-    w: 44,
-    h: 14,
-    x: 0,
-    y: 0,
-    vx: 0,
-    maxV: 540, // px/s
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(LS_SETTINGS);
+      return raw ? { ...defaultSettings, ...JSON.parse(raw) } : { ...defaultSettings };
+    } catch {
+      return { ...defaultSettings };
+    }
+  }
+
+  function saveSettings(s) {
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
+  }
+
+  const defaultStats = {
+    played: 0,
+    won: 0,
+    streak: 0,
+    bestStreak: 0,
+    dist: [0, 0, 0, 0, 0, 0] // wins in 1..6
   };
 
-  const blocks = [];
-  const rng = (min, max) => Math.random() * (max - min) + min;
-
-  function resizeCanvasForHiDPI() {
-    const cssW = canvas.clientWidth;
-    const cssH = canvas.clientHeight;
-
-    // Keep aspect ratio similar to initial 720x420
-    const targetH = Math.min(cssH || 420, 420);
-    const targetW = cssW || 720;
-
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    canvas.width = Math.floor(targetW * dpr);
-    canvas.height = Math.floor(targetH * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // logical size
-    canvas._w = targetW;
-    canvas._h = targetH;
-
-    player.y = canvas._h - 34;
-    player.x = canvas._w / 2 - player.w / 2;
-  }
-
-  window.addEventListener("resize", () => {
-    resizeCanvasForHiDPI();
-    draw();
-  });
-
-  resizeCanvasForHiDPI();
-
-  function reset() {
-    state.running = false;
-    state.paused = false;
-    state.over = false;
-    state.t = 0;
-    state.score = 0;
-    state.speed = 1.0;
-    state.lastTs = 0;
-    blocks.length = 0;
-
-    player.vx = 0;
-    player.y = canvas._h - 34;
-    player.x = canvas._w / 2 - player.w / 2;
-
-    scoreText.textContent = "0";
-    speedText.textContent = "1.0×";
-    statusText.textContent = reduceMotion ? "Ready (reduce motion)" : "Ready";
-    draw();
-  }
-
-  function start() {
-    if (state.running && state.over) reset();
-    state.running = true;
-    state.paused = false;
-    state.over = false;
-    statusText.textContent = "Running";
-    requestAnimationFrame(loop);
-  }
-
-  function pauseToggle() {
-    if (!state.running) return;
-    state.paused = !state.paused;
-    statusText.textContent = state.paused ? "Paused" : "Running";
-    if (!state.paused) requestAnimationFrame(loop);
-  }
-
-  function gameOver() {
-    state.over = true;
-    state.running = true; // still running, but ended
-    statusText.textContent = "Game Over — Start to retry";
-
-    if (state.score > highscore) {
-      highscore = state.score;
-      localStorage.setItem(HS_KEY, String(highscore));
-      hsText.textContent = String(highscore);
-      highscoreText.textContent = String(highscore);
+  function loadStats() {
+    try {
+      const raw = localStorage.getItem(LS_STATS);
+      return raw ? { ...defaultStats, ...JSON.parse(raw) } : { ...defaultStats };
+    } catch {
+      return { ...defaultStats };
     }
-    draw();
   }
 
-  // Controls (keyboard)
-  const keys = new Set();
-  window.addEventListener("keydown", (e) => {
-    const k = e.key.toLowerCase();
-    if (["arrowleft","arrowright","a","d"," "].includes(k)) e.preventDefault();
-    keys.add(k);
-
-    if (k === " ") pauseToggle();
-  });
-  window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
-
-  // Touch controls (tap left/right or drag)
-  let touchActive = false;
-  let touchLastX = 0;
-
-  canvas.addEventListener("pointerdown", (e) => {
-    canvas.setPointerCapture(e.pointerId);
-    touchActive = true;
-    touchLastX = e.offsetX;
-    // Tap left/right
-    if (e.pointerType !== "mouse") {
-      const mid = canvas.clientWidth / 2;
-      const dir = e.offsetX < mid ? -1 : 1;
-      player.vx = dir * player.maxV;
-    }
-  });
-
-  canvas.addEventListener("pointermove", (e) => {
-    if (!touchActive) return;
-    const dx = e.offsetX - touchLastX;
-    touchLastX = e.offsetX;
-    // convert small drags to velocity
-    player.vx = Math.max(-player.maxV, Math.min(player.maxV, dx * 40));
-  });
-
-  canvas.addEventListener("pointerup", () => {
-    touchActive = false;
-    player.vx = 0;
-  });
-
-  function spawnBlock() {
-    const w = rng(18, 60);
-    const h = rng(14, 28);
-    blocks.push({
-      x: rng(0, canvas._w - w),
-      y: -h - 5,
-      w, h,
-      vy: rng(140, 260) * state.speed
-    });
+  function saveStats(s) {
+    localStorage.setItem(LS_STATS, JSON.stringify(s));
   }
 
-  function update(dt) {
-    state.t += dt;
+  // ==============
+  //  GAME STATE
+  // ==============
+  let settings = loadSettings();
+  let stats = loadStats();
 
-    // Difficulty over time
-    state.speed = 1 + Math.min(2.5, state.t / 28);
-    speedText.textContent = state.speed.toFixed(1) + "×";
+  // state object is swapped depending on daily/random
+  let state = null;
 
-    // Score
-    state.score += Math.floor(dt * 100);
-    scoreText.textContent = String(state.score);
+  function todayKey() {
+    // YYYY-MM-DD
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
 
-    // Input → velocity
-    const left = keys.has("arrowleft") || keys.has("a");
-    const right = keys.has("arrowright") || keys.has("d");
-    if (!touchActive) {
-      if (left && !right) player.vx = -player.maxV;
-      else if (right && !left) player.vx = player.maxV;
-      else player.vx = 0;
+  function mulberry32(seed) {
+    // deterministic RNG
+    return function() {
+      let t = (seed += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function hashStringToSeed(str) {
+    // stable seed from string
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
     }
+    return h >>> 0;
+  }
 
-    // Move player
-    player.x += player.vx * dt;
-    player.x = Math.max(6, Math.min(canvas._w - player.w - 6, player.x));
+  function pickDailyAnswer() {
+    const key = todayKey();
+    const rng = mulberry32(hashStringToSeed(key));
+    const idx = Math.floor(rng() * WORDS.length);
+    return WORDS[idx];
+  }
 
-    // Spawn rate
-    const spawnChance = dt * (1.2 + state.speed * 0.9);
-    if (Math.random() < spawnChance) spawnBlock();
+  function pickRandomAnswer() {
+    const idx = Math.floor(Math.random() * WORDS.length);
+    return WORDS[idx];
+  }
 
-    // Move blocks
-    for (let i = blocks.length - 1; i >= 0; i--) {
-      const b = blocks[i];
-      b.vy = (b.vy * 0.985) + (180 * state.speed * 0.015); // smooth increase
-      b.y += b.vy * dt;
-      if (b.y > canvas._h + 60) blocks.splice(i, 1);
-    }
+  function freshState(answer, modeKey) {
+    return {
+      modeKey,            // "daily:YYYY-MM-DD" or "random:timestamp"
+      answer,             // string, uppercase
+      grid: Array.from({ length: ROWS }, () => Array(COLS).fill("")),
+      evaluations: Array.from({ length: ROWS }, () => Array(COLS).fill("")),
+      row: 0,
+      col: 0,
+      status: "playing",  // playing | won | lost
+      keyboard: {},       // letter => absent/present/correct
+      usedHints: {
+        // for hard mode: must reuse known hints
+        // correctPos: Map(index->letter), presentLetters: Set(letter)
+        correctPos: {},
+        presentLetters: []
+      }
+    };
+  }
 
-    // Collision
-    const px = player.x, py = player.y, pw = player.w, ph = player.h;
-    for (const b of blocks) {
-      if (px < b.x + b.w && px + pw > b.x && py < b.y + b.h && py + ph > b.y) {
-        gameOver();
-        break;
+  function loadGameState(mode) {
+    if (mode === "daily") {
+      const key = `daily:${todayKey()}`;
+      try {
+        const raw = localStorage.getItem(LS_DAILY_STATE);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (obj?.modeKey !== key) return null;
+        return obj;
+      } catch {
+        return null;
+      }
+    } else {
+      try {
+        const raw = localStorage.getItem(LS_RANDOM_STATE);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        return obj;
+      } catch {
+        return null;
       }
     }
   }
 
-  function drawBackground() {
-    const w = canvas._w, h = canvas._h;
-
-    // base
-    ctx.clearRect(0, 0, w, h);
-
-    // subtle grid
-    ctx.globalAlpha = 0.10;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const step = 28;
-    for (let x = 0; x <= w; x += step) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-    }
-    for (let y = 0; y <= h; y += step) {
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-    }
-    ctx.strokeStyle = "#e7eefc";
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // vignette
-    const g = ctx.createRadialGradient(w * 0.5, h * 0.6, 50, w * 0.5, h * 0.6, Math.max(w,h));
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(0,0,0,0.55)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  }
-
-  function drawPlayer() {
-    // neon glow
-    ctx.save();
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = "rgba(124,247,212,0.85)";
-    ctx.fillStyle = "rgba(124,247,212,0.95)";
-    ctx.fillRect(player.x, player.y, player.w, player.h);
-
-    // inner highlight
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(255,255,255,0.15)";
-    ctx.fillRect(player.x + 4, player.y + 3, player.w - 8, 3);
-    ctx.restore();
-  }
-
-  function drawBlocks() {
-    for (const b of blocks) {
-      ctx.save();
-      ctx.shadowBlur = 16;
-      ctx.shadowColor = "rgba(110,168,254,0.75)";
-      ctx.fillStyle = "rgba(110,168,254,0.9)";
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(0,0,0,0.18)";
-      ctx.fillRect(b.x, b.y + b.h - 4, b.w, 4);
-      ctx.restore();
+  function saveGameState() {
+    if (!state) return;
+    if (state.modeKey.startsWith("daily:")) {
+      localStorage.setItem(LS_DAILY_STATE, JSON.stringify(state));
+    } else {
+      localStorage.setItem(LS_RANDOM_STATE, JSON.stringify(state));
     }
   }
 
-  function drawOverlayText() {
-    if (!state.running) {
-      drawCenterText("Start drücken", "oder Enter im Kopf: einfach klicken");
+  // ==============
+  //  UI BUILD
+  // ==============
+  function buildGrid() {
+    gridEl.innerHTML = "";
+    for (let r = 0; r < ROWS; r++) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "row";
+      rowEl.dataset.row = String(r);
+
+      for (let c = 0; c < COLS; c++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.dataset.row = String(r);
+        tile.dataset.col = String(c);
+        tile.textContent = "";
+        rowEl.appendChild(tile);
+      }
+      gridEl.appendChild(rowEl);
+    }
+  }
+
+  const KEYBOARD_ROWS = [
+    ["Q","W","E","R","T","Y","U","I","O","P"],
+    ["A","S","D","F","G","H","J","K","L"],
+    ["ENTER","Z","X","C","V","B","N","M","⌫"]
+  ];
+
+  function buildKeyboard() {
+    keyboardEl.innerHTML = "";
+    for (const row of KEYBOARD_ROWS) {
+      const r = document.createElement("div");
+      r.className = "krow";
+
+      for (const k of row) {
+        const btn = document.createElement("button");
+        btn.className = "key" + (k === "ENTER" || k === "⌫" ? " wide" : "");
+        btn.type = "button";
+        btn.dataset.key = k;
+        btn.textContent = k === "⌫" ? "⌫" : k;
+        btn.addEventListener("click", () => handleKey(k));
+        r.appendChild(btn);
+      }
+      keyboardEl.appendChild(r);
+    }
+  }
+
+  // ==============
+  //  RENDER
+  // ==============
+  function tileEl(r, c) {
+    return gridEl.querySelector(`.tile[data-row="${r}"][data-col="${c}"]`);
+  }
+
+  function showToast(msg, ms = 1100) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    window.clearTimeout(showToast._t);
+    showToast._t = window.setTimeout(() => toastEl.classList.remove("show"), ms);
+  }
+
+  function setContrastUI(on) {
+    document.documentElement.setAttribute("data-contrast", on ? "1" : "0");
+  }
+
+  function syncSettingsUI() {
+    tgContrast.checked = !!settings.contrast;
+    tgReduceMotion.checked = !!settings.reduceMotion;
+    tgHardMode.checked = !!settings.hardMode;
+    setContrastUI(!!settings.contrast);
+  }
+
+  function renderAll() {
+    // Grid
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const t = tileEl(r, c);
+        const ch = state.grid[r][c];
+        const ev = state.evaluations[r][c];
+
+        t.textContent = ch || "";
+        t.classList.toggle("filled", !!ch);
+
+        t.classList.remove("correct","present","absent");
+        if (ev) t.classList.add(ev);
+      }
+    }
+
+    // Keyboard coloring
+    const buttons = keyboardEl.querySelectorAll(".key");
+    buttons.forEach(b => {
+      const k = b.dataset.key;
+      if (!k || k === "ENTER" || k === "⌫") return;
+      b.classList.remove("correct","present","absent");
+      const v = state.keyboard[k] || "";
+      if (v) b.classList.add(v);
+    });
+
+    // Mode badge
+    if (state.modeKey.startsWith("daily:")) {
+      dayBadge.textContent = "Daily";
+      dayBadge.title = "Tägliches Wort";
+    } else {
+      dayBadge.textContent = "Random";
+      dayBadge.title = "Zufälliges Wort";
+    }
+  }
+
+  function animateRowShake(r) {
+    const rowEl = gridEl.querySelector(`.row[data-row="${r}"]`);
+    if (!rowEl) return;
+    if (settings.reduceMotion) return;
+    rowEl.classList.remove("shake");
+    void rowEl.offsetWidth;
+    rowEl.classList.add("shake");
+  }
+
+  function animateTilePop(r, c) {
+    const t = tileEl(r, c);
+    if (!t) return;
+    if (settings.reduceMotion) return;
+    t.classList.remove("pop");
+    void t.offsetWidth;
+    t.classList.add("pop");
+  }
+
+  async function revealRow(r, evals) {
+    for (let c = 0; c < COLS; c++) {
+      const t = tileEl(r, c);
+      if (!t) continue;
+
+      const ev = evals[c];
+      state.evaluations[r][c] = ev;
+
+      if (!settings.reduceMotion) {
+        t.classList.remove("reveal");
+        void t.offsetWidth;
+        t.classList.add("reveal");
+        await wait(70);
+      }
+
+      t.classList.remove("correct","present","absent");
+      if (ev) t.classList.add(ev);
+    }
+  }
+
+  function wait(ms) {
+    return new Promise(res => setTimeout(res, ms));
+  }
+
+  // ==============
+  //  WORDLE EVALUATION (with duplicates handled)
+  // ==============
+  function evaluateGuess(guess, answer) {
+    // guess/answer uppercase
+    const g = guess.split("");
+    const a = answer.split("");
+
+    const res = Array(COLS).fill("absent");
+    const used = Array(COLS).fill(false);
+
+    // pass 1: correct
+    for (let i = 0; i < COLS; i++) {
+      if (g[i] === a[i]) {
+        res[i] = "correct";
+        used[i] = true;
+      }
+    }
+
+    // pass 2: present
+    for (let i = 0; i < COLS; i++) {
+      if (res[i] === "correct") continue;
+      const ch = g[i];
+      let found = -1;
+      for (let j = 0; j < COLS; j++) {
+        if (!used[j] && a[j] === ch) {
+          found = j;
+          break;
+        }
+      }
+      if (found !== -1) {
+        res[i] = "present";
+        used[found] = true;
+      }
+    }
+
+    return res;
+  }
+
+  function updateKeyboardFromEval(guess, evals) {
+    for (let i = 0; i < COLS; i++) {
+      const ch = guess[i];
+      const ev = evals[i];
+      const prev = state.keyboard[ch] || "";
+      if (KEY_RANK[ev] > KEY_RANK[prev]) {
+        state.keyboard[ch] = ev;
+      }
+    }
+  }
+
+  // ==============
+  //  HARD MODE (simple but correct)
+  // ==============
+  function deriveHintsFromRow(guess, evals) {
+    // correct positions
+    for (let i = 0; i < COLS; i++) {
+      if (evals[i] === "correct") state.usedHints.correctPos[i] = guess[i];
+    }
+    // present letters
+    const presents = new Set(state.usedHints.presentLetters);
+    for (let i = 0; i < COLS; i++) {
+      if (evals[i] === "present" || evals[i] === "correct") presents.add(guess[i]);
+    }
+    state.usedHints.presentLetters = Array.from(presents);
+  }
+
+  function validateHardMode(nextGuess) {
+    const cp = state.usedHints.correctPos;
+    for (const idxStr of Object.keys(cp)) {
+      const idx = Number(idxStr);
+      if (nextGuess[idx] !== cp[idx]) {
+        return `Hard Mode: Position ${idx + 1} muss "${cp[idx]}" sein.`;
+      }
+    }
+    // Must include all known present letters at least once
+    for (const ch of state.usedHints.presentLetters) {
+      if (!nextGuess.includes(ch)) {
+        return `Hard Mode: Nutze den Hinweis "${ch}".`;
+      }
+    }
+    return "";
+  }
+
+  // ==============
+  //  INPUT / GAMEPLAY
+  // ==============
+  function currentGuess() {
+    return state.grid[state.row].join("");
+  }
+
+  function setLetter(ch) {
+    if (state.status !== "playing") return;
+    if (state.col >= COLS) return;
+
+    state.grid[state.row][state.col] = ch;
+    animateTilePop(state.row, state.col);
+    state.col++;
+    saveGameState();
+    renderAll();
+  }
+
+  function backspace() {
+    if (state.status !== "playing") return;
+    if (state.col <= 0) return;
+    state.col--;
+    state.grid[state.row][state.col] = "";
+    saveGameState();
+    renderAll();
+  }
+
+  function isValidWord(w) {
+    // Engine: only accept from WORDS list to keep it Wordle-like
+    return WORDS.includes(w);
+  }
+
+  async function submit() {
+    if (state.status !== "playing") return;
+
+    const guess = currentGuess();
+    if (guess.length !== COLS || guess.includes("")) {
+      showToast("5 Buchstaben eingeben");
+      animateRowShake(state.row);
       return;
     }
-    if (state.paused) {
-      drawCenterText("PAUSE", "Leertaste oder Pause-Button");
+
+    if (!isValidWord(guess)) {
+      showToast("Wort nicht in Liste");
+      animateRowShake(state.row);
       return;
     }
-    if (state.over) {
-      drawCenterText("GAME OVER", "Start = Retry • Reset = Neustart");
+
+    if (settings.hardMode) {
+      const msg = validateHardMode(guess);
+      if (msg) {
+        showToast(msg, 1400);
+        animateRowShake(state.row);
+        return;
+      }
+    }
+
+    const evals = evaluateGuess(guess, state.answer);
+    await revealRow(state.row, evals);
+
+    updateKeyboardFromEval(guess, evals);
+    deriveHintsFromRow(guess, evals);
+
+    const won = evals.every(e => e === "correct");
+    if (won) {
+      state.status = "won";
+      saveGameState();
+      renderAll();
+      onGameEnd(true, state.row + 1);
+      showToast("Gewonnen!");
       return;
+    }
+
+    if (state.row === ROWS - 1) {
+      state.status = "lost";
+      saveGameState();
+      renderAll();
+      onGameEnd(false, 0);
+      showToast(`Verloren — ${state.answer}`);
+      return;
+    }
+
+    // next row
+    state.row++;
+    state.col = 0;
+    saveGameState();
+    renderAll();
+  }
+
+  function handleKey(k) {
+    if (!state) return;
+
+    if (k === "ENTER") return submit();
+    if (k === "⌫" || k === "BACKSPACE") return backspace();
+
+    // Only A-Z
+    const ch = k.length === 1 ? k.toUpperCase() : "";
+    if (!/^[A-Z]$/.test(ch)) return;
+    setLetter(ch);
+  }
+
+  function bindPhysicalKeyboard() {
+    window.addEventListener("keydown", (e) => {
+      if (helpModal.open || statsModal.open || settingsModal.open) {
+        if (e.key === "Escape") closeAllModals();
+        return;
+      }
+
+      const key = e.key;
+      if (key === "Enter") { e.preventDefault(); handleKey("ENTER"); return; }
+      if (key === "Backspace") { e.preventDefault(); handleKey("BACKSPACE"); return; }
+
+      const ch = key.toUpperCase();
+      if (/^[A-ZÄÖÜ]$/.test(ch)) {
+        // simple umlaut mapping to keep engine consistent
+        const mapped = ch === "Ä" ? "A" : ch === "Ö" ? "O" : ch === "Ü" ? "U" : ch;
+        handleKey(mapped);
+      }
+    });
+  }
+
+  // ==============
+  //  MODALS
+  // ==============
+  function closeAllModals() {
+    [helpModal, statsModal, settingsModal].forEach(m => { if (m.open) m.close(); });
+  }
+
+  function bindModals() {
+    btnHelp.addEventListener("click", () => helpModal.showModal());
+    btnStats.addEventListener("click", () => { renderStats(); statsModal.showModal(); });
+    btnSettings.addEventListener("click", () => settingsModal.showModal());
+
+    document.querySelectorAll("[data-close]").forEach(b => {
+      b.addEventListener("click", () => closeAllModals());
+    });
+
+    // click outside to close
+    [helpModal, statsModal, settingsModal].forEach(m => {
+      m.addEventListener("click", (e) => {
+        const r = m.getBoundingClientRect();
+        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        if (!inside) m.close();
+      });
+    });
+  }
+
+  // ==============
+  //  STATS + SHARE
+  // ==============
+  function onGameEnd(won, attempt) {
+    // Daily streak logic: increase only if daily and won today, reset if daily lost
+    stats.played++;
+
+    if (won) {
+      stats.won++;
+      stats.streak++;
+      stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
+      if (attempt >= 1 && attempt <= 6) stats.dist[attempt - 1]++;
+
+      saveStats(stats);
+      return;
+    }
+
+    // loss
+    stats.streak = 0;
+    saveStats(stats);
+  }
+
+  function renderStats() {
+    stPlayed.textContent = String(stats.played);
+    stWon.textContent = String(stats.won);
+    stStreak.textContent = String(stats.streak);
+    stBest.textContent = String(stats.bestStreak);
+
+    distBars.innerHTML = "";
+    const max = Math.max(1, ...stats.dist);
+
+    for (let i = 0; i < 6; i++) {
+      const row = document.createElement("div");
+      row.className = "barRow";
+
+      const label = document.createElement("div");
+      label.className = "barLabel";
+      label.textContent = String(i + 1);
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      const fill = document.createElement("span");
+      const pct = Math.round((stats.dist[i] / max) * 100);
+      fill.style.width = `${pct}%`;
+      bar.appendChild(fill);
+
+      const val = document.createElement("div");
+      val.className = "barValue";
+      val.textContent = String(stats.dist[i]);
+
+      row.appendChild(label);
+      row.appendChild(bar);
+      row.appendChild(val);
+
+      distBars.appendChild(row);
     }
   }
 
-  function drawCenterText(head, sub) {
-    const w = canvas._w, h = canvas._h;
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(231,238,252,0.95)";
-    ctx.font = "700 28px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    ctx.fillText(head, w / 2, h / 2 - 8);
-
-    ctx.fillStyle = "rgba(169,182,211,0.95)";
-    ctx.font = "500 14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    ctx.fillText(sub, w / 2, h / 2 + 18);
-    ctx.restore();
+  function evalToEmoji(e) {
+    if (e === "correct") return "🟩";
+    if (e === "present") return "🟨";
+    return "⬛";
   }
 
-  function draw() {
-    drawBackground();
-    drawBlocks();
-    drawPlayer();
-    drawOverlayText();
+  async function shareResult() {
+    const rows = [];
+    for (let r = 0; r < ROWS; r++) {
+      const ev = state.evaluations[r];
+      if (!ev || !ev[0]) break;
+      rows.push(ev.map(evalToEmoji).join(""));
+    }
+
+    const solved = state.status === "won";
+    const modeLabel = state.modeKey.startsWith("daily:") ? todayKey() : "Random";
+    const attempts = solved ? rows.length : "X";
+    const header = `NeonWord ${modeLabel} ${attempts}/6`;
+    const text = `${header}\n${rows.join("\n")}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("In Zwischenablage kopiert");
+    } catch {
+      showToast("Kopieren nicht möglich");
+    }
   }
 
-  function loop(ts) {
-    if (!state.running || state.paused) return;
-
-    if (!state.lastTs) state.lastTs = ts;
-    const rawDt = (ts - state.lastTs) / 1000;
-    state.lastTs = ts;
-
-    // clamp dt
-    const dt = Math.max(0, Math.min(0.033, rawDt));
-
-    if (!state.over) update(dt);
-    draw();
-
-    if (!state.over) requestAnimationFrame(loop);
+  // ==============
+  //  NEW GAME / MODE
+  // ==============
+  function newDailyGameIfNeeded() {
+    const key = `daily:${todayKey()}`;
+    const loaded = loadGameState("daily");
+    if (loaded) {
+      state = loaded;
+      return;
+    }
+    const answer = pickDailyAnswer();
+    state = freshState(answer, key);
+    saveGameState();
   }
 
-  // Buttons
-  btnStart.addEventListener("click", () => start());
-  btnPause.addEventListener("click", () => pauseToggle());
-  btnReset.addEventListener("click", () => reset());
+  function newRandomGame() {
+    const key = `random:${Date.now()}`;
+    const answer = pickRandomAnswer();
+    state = freshState(answer, key);
+    saveGameState();
+  }
 
-  // Start with a clean frame
-  reset();
+  function startGame() {
+    // daily by default
+    newDailyGameIfNeeded();
+    renderAll();
+  }
+
+  // ==============
+  //  SETTINGS BINDINGS
+  // ==============
+  function bindSettings() {
+    tgContrast.addEventListener("change", () => {
+      settings.contrast = tgContrast.checked;
+      setContrastUI(settings.contrast);
+      saveSettings(settings);
+    });
+
+    tgReduceMotion.addEventListener("change", () => {
+      settings.reduceMotion = tgReduceMotion.checked;
+      saveSettings(settings);
+      showToast(settings.reduceMotion ? "Reduce Motion: an" : "Reduce Motion: aus");
+    });
+
+    tgHardMode.addEventListener("change", () => {
+      settings.hardMode = tgHardMode.checked;
+      saveSettings(settings);
+      showToast(settings.hardMode ? "Hard Mode: an" : "Hard Mode: aus");
+    });
+
+    btnResetStats.addEventListener("click", () => {
+      stats = { played: 0, won: 0, streak: 0, bestStreak: 0, dist: [0,0,0,0,0,0] };
+      saveStats(stats);
+      renderStats();
+      showToast("Stats gelöscht");
+    });
+  }
+
+  // ==============
+  //  INIT
+  // ==============
+  function init() {
+    syncSettingsUI();
+    buildGrid();
+    buildKeyboard();
+    bindPhysicalKeyboard();
+    bindModals();
+    bindSettings();
+
+    btnNew.addEventListener("click", () => {
+      // new random game (doesn't affect daily)
+      newRandomGame();
+      renderAll();
+      showToast("Random Spiel gestartet");
+    });
+
+    btnShare.addEventListener("click", () => {
+      if (state.status === "playing") {
+        showToast("Erst Spiel beenden");
+        animateRowShake(state.row);
+        return;
+      }
+      shareResult();
+    });
+
+    // Load stats
+    renderStats();
+
+    // Start daily (load saved daily if exists)
+    startGame();
+
+    // If daily is already finished, reflect that and let user share
+    if (state.status !== "playing") {
+      const msg = state.status === "won" ? "Heute gelöst ✅" : "Heute verloren";
+      showToast(msg, 1200);
+    }
+  }
+
+  init();
 })();
