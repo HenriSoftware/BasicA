@@ -1,49 +1,117 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Meine einfache Website</title>
-  <style>
-    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;color:#222}
-    body{line-height:1.6;padding:1.5rem;display:flex;flex-direction:column;min-height:100vh}
-    header,footer{background:#f4f4f7;padding:1rem;border-radius:6px}
-    nav ul{list-style:none;padding:0;display:flex;gap:0.5rem}
-    nav a{text-decoration:none;color:#0366d6}
-    main{flex:1;margin:1rem 0}
-    .container{max-width:900px;margin:0 auto}
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dark Site + Mini-Game</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
-  <div class="container">
-    <header>
-      <h1>Willkommen</h1>
-      <p>Dies ist eine einfache, grundlegende Website.</p>
-    </header>
+  <header class="container header">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        <div class="title">Meine Dark Website</div>
+        <div class="subtitle">Simple. Clean. Mit Mini-Game.</div>
+      </div>
+    </div>
 
-    <nav aria-label="Hauptnavigation">
-      <ul>
-        <li><a href="#">Start</a></li>
-        <li><a href="#">Über</a></li>
-        <li><a href="#">Kontakt</a></li>
-      </ul>
+    <nav class="nav">
+      <a href="#home">Home</a>
+      <a href="#game">Game</a>
+      <a href="#about">About</a>
     </nav>
+  </header>
 
-    <main>
-      <section>
-        <h2>Über diese Seite</h2>
-        <p>Hier findest du ein minimales HTML-Template als Ausgangspunkt für deine Website.</p>
-        <ul>
-          <li>Responsives Layout</li>
-          <li>Einfaches Styling</li>
-          <li>Semantische Struktur</li>
-        </ul>
-      </section>
-    </main>
+  <main class="container">
+    <section id="home" class="card hero">
+      <div>
+        <h1>Willkommen</h1>
+        <p>
+          Diese Website ist eine minimalistische Dark-Theme Seite mit einem kleinen
+          Canvas-Minigame (Tastatur oder Touch).
+        </p>
+        <div class="row">
+          <button id="btnScrollGame" class="btn primary">Zum Game</button>
+          <button id="btnToggleReduceMotion" class="btn">Reduce Motion</button>
+        </div>
+      </div>
 
-    <footer>
-      <p>&copy; 2026 Deine Website</p>
-    </footer>
-  </div>
+      <div class="stats">
+        <div class="pill">
+          <div class="pillLabel">Status</div>
+          <div class="pillValue" id="statusText">Ready</div>
+        </div>
+        <div class="pill">
+          <div class="pillLabel">Highscore</div>
+          <div class="pillValue" id="highscoreText">0</div>
+        </div>
+        <div class="pill">
+          <div class="pillLabel">Controls</div>
+          <div class="pillValue">← → / A D / Touch</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="game" class="card">
+      <div class="sectionHead">
+        <h2>Mini-Game: Neon Dodger</h2>
+        <p>Weiche fallenden Blöcken aus. Je länger du überlebst, desto höher der Score.</p>
+      </div>
+
+      <div class="gameWrap">
+        <canvas id="gameCanvas" width="720" height="420" aria-label="Neon Dodger Spiel"></canvas>
+
+        <div class="hud">
+          <div class="hudBox">
+            <div class="hudLabel">Score</div>
+            <div class="hudValue" id="scoreText">0</div>
+          </div>
+          <div class="hudBox">
+            <div class="hudLabel">Highscore</div>
+            <div class="hudValue" id="hsText">0</div>
+          </div>
+          <div class="hudBox">
+            <div class="hudLabel">Speed</div>
+            <div class="hudValue" id="speedText">1.0×</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="btnStart" class="btn primary">Start</button>
+          <button id="btnPause" class="btn">Pause</button>
+          <button id="btnReset" class="btn danger">Reset</button>
+        </div>
+
+        <div class="help">
+          <strong>Desktop:</strong> Pfeiltasten (← →) oder A/D &nbsp;|&nbsp;
+          <strong>Mobile:</strong> Links/Rechts tippen oder ziehen
+        </div>
+      </div>
+    </section>
+
+    <section id="about" class="card">
+      <h2>About</h2>
+      <p>
+        Das ist ein superleichtes Setup: reine HTML/CSS/JS Dateien, ideal für GitHub Pages.
+        Du kannst später weitere Seiten, ein Blog oder mehr Games hinzufügen.
+      </p>
+      <ul class="list">
+        <li>Keine Frameworks</li>
+        <li>Dark Theme + saubere UI</li>
+        <li>Highscore wird lokal gespeichert</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="container footer">
+    <span>© <span id="year"></span> • Built with GitHub Pages</span>
+    <span class="dot">•</span>
+    <a class="footerLink" href="#home">Back to top</a>
+  </footer>
+
+  <script src="game.js"></script>
 </body>
 </html>
+
