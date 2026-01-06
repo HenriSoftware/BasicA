@@ -391,9 +391,13 @@ body{
   margin-bottom: 10px;
   color: var(--muted);
 }
+
 .bars{ display:grid; gap: 8px; }
+
 .barRow{
+  
   display:grid;
+  
   grid-template-columns: 22px 1fr 40px;
   gap: 10px;
   align-items:center;
@@ -436,7 +440,8 @@ body{
   .row{ grid-template-columns: repeat(5, 46px); gap: 7px; }
   .tile{ width:46px; height:46px; border-radius: 12px; }
   .key{ height: 42px; min-width: 34px; border-radius: 12px; }
-  .statsGrid{ grid-template-columns: repeat(2, 1fr); }
+  .statsGrid{ grid-template-columns
+    : repeat(2, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce){
