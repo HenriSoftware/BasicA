@@ -476,64 +476,66 @@
   }
 
   async function submit() {
-    if (state.status !== "playing") return;
+  if (state.status !== "playing") return;
 
-    const rowArr = state.grid[state.row];
-const guess = rowArr.join("");
+  const rowArr = state.grid[state.row];
 
-if (rowArr.includes("") || guess.length !== COLS) {
-  showToast("5 Buchstaben eingeben");
-  animateRowShake(state.row);
-  return;
-}
-  
+  // robust: jede Zelle muss genau 1 Zeichen haben
+  const filled = rowArr.every(ch => typeof ch === "string" && ch.length === 1);
+  if (!filled) {
+    showToast("5 Buchstaben eingeben");
+    animateRowShake(state.row);
+    return;
+  }
 
-    if (!isValidWord(guess)) {
-      showToast("Wort nicht in Liste");
+  const guess = rowArr.join("");
+
+  if (!isValidWord(guess)) {
+    showToast("Wort nicht in Liste");
+    animateRowShake(state.row);
+    return;
+  }
+
+  if (settings.hardMode) {
+    const msg = validateHardMode(guess);
+    if (msg) {
+      showToast(msg, 1400);
       animateRowShake(state.row);
       return;
     }
+  }
 
-    if (settings.hardMode) {
-      const msg = validateHardMode(guess);
-      if (msg) {
-        showToast(msg, 1400);
-        animateRowShake(state.row);
-        return;
-      }
-    }
+  const evals = evaluateGuess(guess, state.answer);
+  await revealRow(state.row, evals);
 
-    const evals = evaluateGuess(guess, state.answer);
-    await revealRow(state.row, evals);
+  updateKeyboardFromEval(guess, evals);
+  deriveHintsFromRow(guess, evals);
 
-    updateKeyboardFromEval(guess, evals);
-    deriveHintsFromRow(guess, evals);
-
-    const won = evals.every(e => e === "correct");
-    if (won) {
-      state.status = "won";
-      saveGameState();
-      renderAll();
-      onGameEnd(true, state.row + 1);
-      showToast("Gewonnen!");
-      return;
-    }
-
-    if (state.row === ROWS - 1) {
-      state.status = "lost";
-      saveGameState();
-      renderAll();
-      onGameEnd(false, 0);
-      showToast(`Verloren — ${state.answer}`);
-      return;
-    }
-
-    // next row
-    state.row++;
-    state.col = 0;
+  const won = evals.every(e => e === "correct");
+  if (won) {
+    state.status = "won";
     saveGameState();
     renderAll();
+    onGameEnd(true, state.row + 1);
+    showToast("Gewonnen!");
+    return;
   }
+
+  if (state.row === ROWS - 1) {
+    state.status = "lost";
+    saveGameState();
+    renderAll();
+    onGameEnd(false, 0);
+    showToast(`Verloren — ${state.answer}`);
+    return;
+  }
+
+  state.row++;
+  state.col = 0;
+  saveGameState();
+  renderAll();
+}
+
 
   function handleKey(k) {
     if (!state) return;
