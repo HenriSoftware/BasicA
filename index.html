@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NeonWord — Wordle-Style</title>
-  <meta name="description" content="Ein cleanes Wordle-Style Spiel (HTML/CSS/JS), perfekt für GitHub Pages." />
+  <meta name="description" content="A clean Wordle-style game (HTML/CSS/JS), perfect for GitHub Pages." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,50 +14,49 @@
     <div class="brand" aria-label="NeonWord">
       <span class="logo" aria-hidden="true"></span>
       <span class="brandText">NeonWord</span>
-      <span class="badge" id="dayBadge" title="Tägliches Wort (lokal generiert)">Daily</span>
+      <span class="badge" id="dayBadge" title="Daily code (generated locally)">Daily</span>
     </div>
 
     <div class="topActions">
-      <button class="iconBtn" id="btnHelp" aria-label="Hilfe öffnen" title="Hilfe">?</button>
-      <button class="iconBtn" id="btnStats" aria-label="Statistiken öffnen" title="Stats">★</button>
-      <button class="iconBtn" id="btnSettings" aria-label="Einstellungen öffnen" title="Settings">⚙</button>
+      <button class="iconBtn" id="btnHelp" aria-label="Open help" title="Help">?</button>
+      <button class="iconBtn" id="btnStats" aria-label="Open stats" title="Stats">★</button>
+      <button class="iconBtn" id="btnSettings" aria-label="Open settings" title="Settings">⚙</button>
     </div>
   </header>
 
   <main class="wrap">
-    <section class="card gameCard" aria-label="Spielbereich">
+    <section class="card gameCard" aria-label="Game area">
       <div class="headline">
-        <h1>Errate das Wort</h1>
-        <p>5 Buchstaben • 6 Versuche • Tastatur oder Klick</p>
+        <h1>Guess the code</h1>
+        <p>5 letters • 6 tries • keyboard or tap</p>
       </div>
 
       <div class="statusRow" aria-live="polite">
         <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
       </div>
 
-      <div class="grid" id="grid" aria-label="Rate-Gitter" role="application"></div>
-
-      <div class="keyboard" id="keyboard" aria-label="Bildschirmtastatur"></div>
+      <div class="grid" id="grid" aria-label="Guess grid" role="application"></div>
+      <div class="keyboard" id="keyboard" aria-label="On-screen keyboard"></div>
 
       <div class="bottomRow">
-        <button class="btn subtle" id="btnNew" title="Neues Spiel (zufälliges Wort)">Neues Spiel</button>
-        <button class="btn" id="btnShare" title="Ergebnis als Text kopieren">Teilen</button>
+        <button class="btn subtle" id="btnNew" title="New random game">New game</button>
+        <button class="btn" id="btnShare" title="Copy result as text">Share</button>
       </div>
     </section>
 
     <footer class="foot">
-      <span id="footText">Speichert Verlauf lokal (localStorage). Kein Backend.</span>
+      <span id="footText">Saved locally (localStorage). No backend.</span>
     </footer>
   </main>
 
-  <!-- MODAL: Hilfe -->
+  <!-- HELP MODAL -->
   <dialog class="modal" id="helpModal">
     <div class="modalHead">
       <div>
-        <h2>So funktioniert’s</h2>
-        <p>Tippe ein 5-Buchstaben Wort und drücke Enter.</p>
+        <h2>How it works</h2>
+        <p>Type 5 letters and press Enter.</p>
       </div>
-      <button class="iconBtn" data-close aria-label="Schließen">✕</button>
+      <button class="iconBtn" data-close aria-label="Close">✕</button>
     </div>
 
     <div class="modalBody">
@@ -65,22 +64,22 @@
         <div class="ex">
           <div class="tile demo correct">A</div>
           <div>
-            <div class="label">Grün</div>
-            <div class="muted">Buchstabe ist richtig & an richtiger Position.</div>
+            <div class="label">Green</div>
+            <div class="muted">Correct letter in the correct position.</div>
           </div>
         </div>
         <div class="ex">
           <div class="tile demo present">A</div>
           <div>
-            <div class="label">Gelb</div>
-            <div class="muted">Buchstabe ist im Wort, aber woanders.</div>
+            <div class="label">Yellow</div>
+            <div class="muted">Letter exists, but in a different position.</div>
           </div>
         </div>
         <div class="ex">
           <div class="tile demo absent">A</div>
           <div>
-            <div class="label">Grau</div>
-            <div class="muted">Buchstabe kommt nicht vor.</div>
+            <div class="label">Gray</div>
+            <div class="muted">Letter is not in the code.</div>
           </div>
         </div>
       </div>
@@ -88,35 +87,36 @@
       <hr class="sep" />
 
       <ul class="bullets">
-        <li><strong>Enter</strong> = prüfen, <strong>Backspace</strong> = löschen</li>
-        <li>Mobile: nutze die Bildschirmtastatur</li>
-        <li>Daily: Das Wort wechselt pro Tag (lokal, anhand des Datums)</li>
+        <li><strong>Enter</strong> = submit, <strong>Backspace</strong> = delete</li>
+        <li>Mobile: use the on-screen keyboard</li>
+        <li>Daily: the code changes each day (generated locally from the date)</li>
+        <li>No dictionary: any 5-letter guess is allowed</li>
       </ul>
     </div>
 
     <div class="modalFoot">
-      <button class="btn" data-close>Alles klar</button>
+      <button class="btn" data-close>Got it</button>
     </div>
   </dialog>
 
-  <!-- MODAL: Stats -->
+  <!-- STATS MODAL -->
   <dialog class="modal" id="statsModal">
     <div class="modalHead">
       <div>
-        <h2>Statistiken</h2>
-        <p>Gespeichert auf deinem Gerät.</p>
+        <h2>Stats</h2>
+        <p>Stored on your device.</p>
       </div>
-      <button class="iconBtn" data-close aria-label="Schließen">✕</button>
+      <button class="iconBtn" data-close aria-label="Close">✕</button>
     </div>
 
     <div class="modalBody">
       <div class="statsGrid">
         <div class="statBox">
-          <div class="statLabel">Spiele</div>
+          <div class="statLabel">Played</div>
           <div class="statValue" id="stPlayed">0</div>
         </div>
         <div class="statBox">
-          <div class="statLabel">Gewonnen</div>
+          <div class="statLabel">Won</div>
           <div class="statValue" id="stWon">0</div>
         </div>
         <div class="statBox">
@@ -124,33 +124,33 @@
           <div class="statValue" id="stStreak">0</div>
         </div>
         <div class="statBox">
-          <div class="statLabel">Best Streak</div>
+          <div class="statLabel">Best</div>
           <div class="statValue" id="stBest">0</div>
         </div>
       </div>
 
       <div class="dist">
         <div class="distHead">
-          <span>Verteilung (Versuche)</span>
-          <button class="btn tiny danger" id="btnResetStats" title="Statistiken löschen">Reset</button>
+          <span>Distribution (tries)</span>
+          <button class="btn tiny danger" id="btnResetStats" title="Reset stats">Reset</button>
         </div>
         <div class="bars" id="distBars"></div>
       </div>
     </div>
 
     <div class="modalFoot">
-      <button class="btn" data-close>Schließen</button>
+      <button class="btn" data-close>Close</button>
     </div>
   </dialog>
 
-  <!-- MODAL: Settings -->
+  <!-- SETTINGS MODAL -->
   <dialog class="modal" id="settingsModal">
     <div class="modalHead">
       <div>
-        <h2>Einstellungen</h2>
-        <p>Alles bleibt lokal.</p>
+        <h2>Settings</h2>
+        <p>Everything stays local.</p>
       </div>
-      <button class="iconBtn" data-close aria-label="Schließen">✕</button>
+      <button class="iconBtn" data-close aria-label="Close">✕</button>
     </div>
 
     <div class="modalBody">
@@ -158,7 +158,7 @@
         <label class="toggleRow">
           <span>
             <strong>High Contrast</strong>
-            <span class="muted">stärkere Farben</span>
+            <span class="muted">stronger colors</span>
           </span>
           <input type="checkbox" id="tgContrast" />
         </label>
@@ -166,7 +166,7 @@
         <label class="toggleRow">
           <span>
             <strong>Reduce Motion</strong>
-            <span class="muted">weniger Animation</span>
+            <span class="muted">less animation</span>
           </span>
           <input type="checkbox" id="tgReduceMotion" />
         </label>
@@ -174,7 +174,7 @@
         <label class="toggleRow">
           <span>
             <strong>Hard Mode</strong>
-            <span class="muted">Hinweise müssen genutzt werden</span>
+            <span class="muted">you must use revealed hints</span>
           </span>
           <input type="checkbox" id="tgHardMode" />
         </label>
@@ -183,12 +183,12 @@
       <hr class="sep" />
 
       <div class="small muted">
-        Wortliste ist im <code>game.js</code>. Du kannst sie jederzeit ersetzen/erweitern.
+        The daily answer is generated in <code>game.js</code> (no big word list required).
       </div>
     </div>
 
     <div class="modalFoot">
-      <button class="btn" data-close>Fertig</button>
+      <button class="btn" data-close>Done</button>
     </div>
   </dialog>
 
