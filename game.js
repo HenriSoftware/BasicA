@@ -136,20 +136,24 @@
   }
 
   function generateCode(rng) {
-  // "Pronounceable" 5-letter code using consonant/vowel pattern.
-  // Example outputs: LOMEN, RAVIX, TUNER, BOKAL (not necessarily real words).
-  const V = "AEIOU";
-  const C = "BCDFGHJKLMNPQRSTVWXYZ";
+  // Select a real 5-letter English word from a curated list.
+  // Keeps deterministic behavior by using the provided `rng` function.
+  const WORDS = [
+    "ABOUT","ABOVE","OTHER","WHICH","THEIR","THERE","WOULD","THESE","FIRST","THOSE",
+    "WHERE","AFTER","AGAIN","WORLD","STATE","GREAT","SMALL","LARGE","YOUNG","PLACE",
+    "UNDER","WATER","RIGHT","THINK","HOUSE","MUSIC","POINT","START","SMILE","LIGHT",
+    "NIGHT","MONEY","HEART","HAPPY","LAUGH","PHONE","CHAIR","TABLE","GREEN","BLACK",
+    "WHITE","BROWN","BRAVE","QUICK","BRAIN","STACK","CODEX","GAMES","SWEET","SHINE",
+    "BRING","CLEAN","DANCE","DRIVE","BREAD","FRUIT","JUICE","GRACE","TRUST","CHARM",
+    "FIELD","RIVER","MOUNT","OCEAN","BLAZE","FAITH","SENSE","SOUND","POWER","UNITY",
+    "SPARK","APPLE","GRAPE","LEMON","PEACH","MANGO","BERRY","SUGAR","HONEY","FLOUR",
+    "STEAM","SMOKE","STEEL","METAL","STONE","EARTH","PLANT","GROWN","CLEAR","CYCLE",
+    "LAKES","PILOT","TRADE","STORE","BOARD","CHAIN","PLAIN","BASIC","CRANE","FORGE"
+  ];
 
-  // Patterns for 5 letters (C=consonant, V=vowel)
-  const patterns = ["CVCVC", "CVCCV", "CCVCV", "CVCVV", "CVVCC"];
-
-  const pick = (s) => s[Math.floor(rng() * s.length)];
-  const pat = patterns[Math.floor(rng() * patterns.length)];
-
-  let out = "";
-  for (const p of pat) out += (p === "V") ? pick(V) : pick(C);
-  return out;
+  const idx = Math.floor(rng() * WORDS.length);
+  // Fallback: ensure index in range and return uppercase 5-letter word
+  return WORDS[Math.max(0, Math.min(WORDS.length - 1, idx))];
 }
 
 
