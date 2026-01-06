@@ -478,12 +478,15 @@
   async function submit() {
     if (state.status !== "playing") return;
 
-    const guess = currentGuess();
-    if (guess.length !== COLS || guess.includes("")) {
-      showToast("5 Buchstaben eingeben");
-      animateRowShake(state.row);
-      return;
-    }
+    const rowArr = state.grid[state.row];
+const guess = rowArr.join("");
+
+if (rowArr.includes("") || guess.length !== COLS) {
+  showToast("5 Buchstaben eingeben");
+  animateRowShake(state.row);
+  return;
+}
+  
 
     if (!isValidWord(guess)) {
       showToast("Wort nicht in Liste");
